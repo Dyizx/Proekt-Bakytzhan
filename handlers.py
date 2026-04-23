@@ -1,3 +1,4 @@
+from pydoc import text
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
@@ -13,17 +14,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎮 Топ 50 ойын", callback_data="goto_top50")],
         [InlineKeyboardButton("🎲 Кездейсоқ ойын", callback_data="random")],
         [InlineKeyboardButton("📜 Тарих", callback_data="history")],
+        [InlineKeyboardButton("❓ Көмек", callback_data="help")],
     ]
     text = (
-        "👋 Сәлем! Мен ойындар туралы ақпарат беретін ботпын.\n\n"
-        "📌 Командалар:\n"
-        "🔹 Ойын атын жаз — толық ақпарат аласың\n"
+        "👋 Сәлем! Мен *Game\\_InfoBot* — ойындар туралы ақпарат беретін ботпын.\n\n"
+        "🎮 Ойын атын жазсаң — толық ақпарат аласың\n\n"
+        "📌 *Қолжетімді командалар:*\n"
         "🔹 /top50 — үздік 50 ойын тізімі\n"
         "🔹 /random — кездейсоқ ойын\n"
         "🔹 /history — іздеу тарихы\n"
         "🔹 /clear — тарихты тазалау\n"
+        "🔹 /help — барлық командалар\n"
     )
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def top50(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,6 +60,25 @@ async def history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "❓ *Барлық командалар тізімі:*\n\n"
+        "🔹 /start — ботты іске қосу, басты мәзір\n"
+        "🔹 /top50 — үздік 50 ойын санаттары бойынша\n"
+        "🔹 /random — кездейсоқ ойын туралы ақпарат\n"
+        "🔹 /history — соңғы 10 іздеген ойын тарихы\n"
+        "🔹 /clear — іздеу тарихын тазалау\n"
+        "🔹 /help — осы командалар тізімі\n\n"
+        "💡 *Қолдану:*\n"
+        "Кез келген ойын атауын жай жазсаң болады\n"
+        "Мысалы: `Minecraft`, `GTA V`, `Elden Ring`"
+    )
+    keyboard = [
+        [InlineKeyboardButton("🎮 Топ 50 ойын", callback_data="goto_top50")],
+        [InlineKeyboardButton("🎲 Кездейсоқ ойын", callback_data="random")],
+    ]
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def clear_history_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -80,13 +102,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     async def send_text(text, **kwargs):
-        await query.message.reply_text(text, **kwargs)
+        return await query.message.reply_text(text, **kwargs)
 
     async def send_photo(photo, caption, **kwargs):
-        await query.message.reply_photo(photo=photo, caption=caption, **kwargs)
+        return await query.message.reply_photo(photo=photo, caption=caption, **kwargs)
 
     async def send_media_group(media, **kwargs):
-        await query.message.reply_media_group(media, **kwargs)
+        return await query.message.reply_media_group(media, **kwargs)
 
     if query.data == "history":
         history = user_history.get(user_id, [])
@@ -116,7 +138,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         add_to_history(user_id, game_name)
-        await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id)
+        await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id, context)
 
     elif query.data == "goto_top50":
         keyboard = [
@@ -156,7 +178,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "cancel":
-        await query.edit_message_text("🚫 Бас тартылды. Ойын атын жазып іздей аласың.")
+        try:
+            await query.message.delete()
+        except:
+            pass
 
     elif query.data.startswith("game:"):
         game_name = query.data[5:]
@@ -165,10 +190,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         add_to_history(user_id, game_name)
-        await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id)
+        await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id, context)
 
     elif query.data == "delete_msg":
-        await query.message.delete()
+        try:
+            await query.message.delete()
+            await context.bot.delete_message(
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id - 1
+            )
+        except:
+            try:
+                await query.message.delete()
+            except:
+                pass
+    
+    elif query.data == "delete_all":
+        try:
+            current_id = query.message.message_id
+            saved_ids = context.bot_data.get(f"game_msgs_{current_id}", [])
+            
+            if saved_ids:
+                for msg_id in saved_ids:
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=query.message.chat_id,
+                            message_id=msg_id
+                        )
+                    except:
+                        pass
+            else:
+                for i in range(6):
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=query.message.chat_id,
+                            message_id=current_id - i
+                        )
+                    except:
+                        pass
+        except:
+            pass
 
 
 async def get_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,19 +237,18 @@ async def get_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
     async def send_text(text, **kwargs):
-        await update.message.reply_text(text, **kwargs)
+        return await update.message.reply_text(text, **kwargs)
 
     async def send_photo(photo, caption, **kwargs):
-        await update.message.reply_photo(photo=photo, caption=caption, **kwargs)
+        return await update.message.reply_photo(photo=photo, caption=caption, **kwargs)
 
     async def send_media_group(media, **kwargs):
-        await update.message.reply_media_group(media, **kwargs)
+        return await update.message.reply_media_group(media, **kwargs)
 
     add_to_history(user_id, game_name)
-    await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id)
+    await fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id, context)
 
-
-async def fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id=None):
+async def fetch_and_send_game(game_name, send_text, send_photo, send_media_group, user_id=None, context=None):
     result = fetch_game_data(game_name)
 
     if not result:
@@ -267,21 +327,34 @@ async def fetch_and_send_game(game_name, send_text, send_photo, send_media_group
             InlineKeyboardButton("🎲 Кездейсоқ", callback_data="random"),
         ],
         [
-            InlineKeyboardButton("🗑 Жою", callback_data="delete_msg"),
+            InlineKeyboardButton("🗑 Барлығын жою", callback_data="delete_all"),
             InlineKeyboardButton("🚫 Бас тарту", callback_data="cancel"),
         ],
         [InlineKeyboardButton("⬅️ Артқа", callback_data="back_main")],
     ])
 
-    if cover:
-        await send_photo(cover, caption=card[:1024], parse_mode="Markdown")
-    else:
-        await send_text(card, parse_mode="Markdown")
+    sent_ids = []
 
-    await send_text(req_text, parse_mode="Markdown", reply_markup=action_keyboard)
+    if cover:
+        msg1 = await send_photo(cover, caption=card[:1024], parse_mode="Markdown")
+        if msg1:
+            sent_ids.append(msg1.message_id)
+    else:
+        msg1 = await send_text(card, parse_mode="Markdown")
+        if msg1:
+            sent_ids.append(msg1.message_id)
+
+    msg2 = await send_text(req_text, parse_mode="Markdown", reply_markup=action_keyboard)
+    if msg2:
+        sent_ids.append(msg2.message_id)
 
     if screenshots:
         media = [InputMediaPhoto(media=screenshots[0], caption="📸 Скриншоттар")]
         for s in screenshots[1:]:
             media.append(InputMediaPhoto(media=s))
-        await send_media_group(media)
+        msgs = await send_media_group(media)
+        if msgs:
+            for m in msgs:
+                sent_ids.append(m.message_id)
+
+    context.bot_data[f"game_msgs_{msg2.message_id}"] = sent_ids
