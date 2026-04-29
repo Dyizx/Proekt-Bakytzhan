@@ -176,12 +176,10 @@ async def random_game_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 Кездейсоқ ойын: *{game_name}*\nАқпарат іздеуде...",
         parse_mode="Markdown"
     )
-    update.message.text = game_name
-    await get_game(update, context)
+    await get_game(update, context, game_name)
 
 
-async def get_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    game_name = update.message.text
+async def get_game(update: Update, context: ContextTypes.DEFAULT_TYPE, game_name: str):
     user_id = update.message.from_user.id
 
     async def send_text(text, **kwargs):
